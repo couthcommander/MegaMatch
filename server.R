@@ -1,7 +1,6 @@
 library(shiny)
 library(shinyjs)
 library(nbpMatching)
-source('html.R')
 
 shinyServer(function(input, output, session) {
   observeEvent(input$run_dm, {
