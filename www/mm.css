@@ -1,0 +1,9 @@
+.info { font-size: 0.7em; }
+#footer {
+  background-color: #CCCCFF;
+  border: 1px solid;
+  margin: 10px 0px 0px 0px;
+  text-align: center;
+  font-family: sans-serif;
+  font-size: 0.8em;
+}
