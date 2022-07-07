@@ -184,6 +184,11 @@ shinyServer(function(input, output, session) {
   })
 # user clicks "submit" to read covariate data -- generate distancematrix
   observeEvent(input$subCM, {
+    shinyjs::hide('getCov')
+    shinyjs::hide('previewTbl')
+    shinyjs::hide('subCM')
+    shinyjs::show('resetOpts')
+    shinyjs::show('covOut')
     dat <- read.csv(v$covFile)
     # number of covariates
     nc <- length(grep('^weight_', names(input)))
@@ -206,13 +211,17 @@ shinyServer(function(input, output, session) {
         write.csv(v$dm, file = v$dmFile, row.names = FALSE)
       }
     }
-    shinyjs::show('covOut')
+  })
+  observeEvent(input$resetOpts, {
+    shinyjs::show('previewTbl')
+    shinyjs::show('subCM')
+    shinyjs::hide('resetOpts')
+    shinyjs::hide('covOut')
   })
   output$covOut <- renderUI({
     if(is.null(v$dm)) {
       out <- tags$h2('Something went wrong - please start over')
     } else {
-      shinyjs::hide('getCov')
       out1 <- wrapup.covariate(v)
       out2 <- tags$div('A distance matrix has been generated with your covariate matrix. You may now submit your distance matrix through the matching',
         tags$br(),

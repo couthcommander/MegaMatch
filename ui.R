@@ -12,10 +12,11 @@ shinyUI(
 "The covariate matrix expects the first row to contain header information.", tags$br(),
 "If you upload a covariate matrix, quality of match diagnostics will be generated.", tags$br(),
 "Files are expected to be CSV files. You may use a zip file instead if the only content of the file is a CSV file."
-        ),
-        htmlOutput("previewTbl"),
-        shinyjs::hidden(actionButton('subCM', 'Submit'))
+        )
       ),
+      htmlOutput("previewTbl"),
+      shinyjs::hidden(actionButton('subCM', 'Submit')),
+      shinyjs::hidden(actionButton('resetOpts', 'Modify Options')),
       shinyjs::hidden(htmlOutput("covOut"))
     )
   ),
