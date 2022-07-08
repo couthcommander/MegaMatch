@@ -51,6 +51,10 @@ tags$p('This is useful for determining the effectiveness of your weights (when g
     ),
     htmlOutput("qmInfo")
   ),
+  tabPanel("Download Data",
+    tags$div('Data can be downloaded through individual tabs, as well as below.'),
+    htmlOutput("downloader")
+  ),
   tabPanel("Contact Us",
     tags$div('If you have any questions or comments, please send an email to'),
     tags$br('cole.beck@gmail.com')

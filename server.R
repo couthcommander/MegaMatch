@@ -86,29 +86,35 @@ shinyServer(function(input, output, session) {
           dat <- sapply(dat[-1,], as.numeric)
           dimnames(dat) <- list(dim_n, dim_n)
         }
-        v$dm <- nbpMatching::distancematrix(dat)
       } else {
         return(tags$h2('there was a problem'))
       }
+      baseFileName <- sub('_dm[.]csv$', '', basename(v$dmFile))
+      # create distancematrix
+      v$dm <- nbpMatching::distancematrix(dat)
+      # create matched pairs
+      v$matchDat <- nbpMatching::nonbimatch(v$dm)
+      # assign "treatment.grp" to each pair
+      seed <- input$pairSeed
+      if(is.na(seed) || length(seed)==0) seed <- 68
+      ag <- nbpMatching::assign.grp(v$matchDat, seed)
+      # save file names
+      v$matchFile <- file.path(v$td, sprintf('full_%s.csv', baseFileName))
+      v$redmatFile <- file.path(v$td, sprintf('reduced_%s.csv', baseFileName))
+      v$grpFile <- file.path(v$td, sprintf('randomized_%s.csv', baseFileName))
+      # create downloadable data sets
+      write.csv(v$matchDat$matches, file = v$matchFile, row.names = FALSE)
+      write.csv(v$matchDat$halves, file = v$redmatFile, row.names = FALSE)
+      write.csv(ag, file = v$grpFile, row.names = FALSE)
     }
     if(is.null(v$dm)) {
       return(tags$h2('waiting for file upload...'))
     }
-    match <- nonbimatch(v$dm)
-    bfn <- sub('_dm', '', basename(v$dmFile))
-    ffn <- file.path(v$td, paste0('full_', bfn))
-    rfn <- file.path(v$td, paste0('reduced_', bfn))
-    write.csv(match$matches, file = ffn, row.names = FALSE)
-    write.csv(match$halves, file = rfn, row.names = FALSE)
-    v$matchFile <- ffn
-    v$redmatFile <- rfn
-    v$matchDat <- match
-    mm_dl <- tags$p(downloadLink("downloadRM", "Download matches"))
     out1 <- tags$div('Optimal pairs have been generated with your distance matrix. You may now randomize these pairs into groups',
       tags$br(),
       'by clicking ',
       actionLink('run_rp', 'Randomize Pairs'),
-      '. You may upload your pair matrix ',
+      '. You may upload your matching pair matrix ',
       downloadLink("downloadRM", "(download)"),
       ' from there at any time.'
     )
@@ -116,16 +122,17 @@ shinyServer(function(input, output, session) {
       out1 <- paste0(out1, tags$div('You may also view ', actionLink('run_qm', 'Quality of Matches'), '.'))
     }
     out2 <- tags$div(
-      'Total distance: ', round(match$total, 2), tags$br(),
-      'Average distance: ', round(match$mean, 2)
+      'Total distance: ', round(v$matchDat$total, 2), tags$br(),
+      'Average distance: ', round(v$matchDat$mean, 2)
     )
-    out3 <- viewMatchTable(match)
+    out3 <- viewMatchTable(v$matchDat)
     out <- paste0(out1, tags$br(), out2, tags$br(), out3)
     shinyjs::hide('getDM')
     HTML(out)
   })
   output$rpInfo <- renderUI({
     inFile <- input$fh_pairs
+    pairs <- NULL
     if(!is.null(inFile)) {
       fp <- loadFile(inFile, v$td)
       if(file.access(fp) != -1) {
@@ -134,24 +141,27 @@ shinyServer(function(input, output, session) {
       } else {
         return(tags$h2('there was a problem'))
       }
+      # read the CSV file into pairs
+      pairs <- read.csv(v$matchFile)
+      # there should be either 3 or 5 columns in the pairs file
+      if(!(ncol(pairs) %in% c(3,5))) {
+        return(tags$h2('There was a problem loading the pairs file'))
+      }
     }
     if(is.null(v$matchFile)) {
       return(tags$h2('waiting for file upload...'))
     }
-    # read the CSV file into pairs
-    pairs <- read.csv(v$matchFile)
-    # there should be either 3 or 5 columns in the pairs file
-    if(!(ncol(pairs) %in% c(3,5))) {
-      return(tags$h2('There was a problem loading the pairs file'))
-    }
     shinyjs::hide('getRP')
+    if(is.null(pairs)) {
+      pairs <- v$matchDat$matches
+    }
 
     seed <- input$pairSeed
     if(is.na(seed) || length(seed)==0) seed <- 68
-    ag <- assign.grp(pairs, seed)
-    rfn <- file.path(v$td, sub('full_', 'randomized_', basename(v$matchFile)))
-    write.csv(ag, file = rfn, row.names = FALSE)
-    v$grpFile <- rfn
+    ag <- nbpMatching::assign.grp(pairs, seed)
+    v$grpFile <- file.path(v$td, sub('full_', 'randomized_', basename(v$matchFile)))
+    write.csv(ag, file = v$grpFile, row.names = FALSE)
+
     out1 <- viewAssignment(ag)
     rm_dl <- paste0(tags$div('Download ', downloadLink("downloadAG", "treatment group assignments")), tags$br())
     if(!is.null(v$covFile)) {
@@ -167,7 +177,7 @@ shinyServer(function(input, output, session) {
     HTML(out)
   })
   output$qmInfo <- renderUI({
-    if(is.null(v$covFile) || is.null(v$matchFile)) {
+    if(is.null(v$covFile) || is.null(v$matchDat)) {
       return(tags$h3('This is unavailable unless a covariate matrix and full pairing are provided.'))
     }
     covar <- read.csv(v$covFile)
@@ -177,10 +187,30 @@ shinyServer(function(input, output, session) {
     if(length(ignorecols)) {
       covar <- covar[,-ignorecols]
     }
-    match <- read.csv(v$matchFile)
+    match <- v$matchDat$matches
     qual <- nbpMatching::qom(covar, match, use.se = FALSE)
     out <- viewQuality(qual)
     HTML(as.character(out))
+  })
+  output$downloader <- renderUI({
+    if(is.null(input$fh_covmat)) NULL
+    d1 <- 'distance matrix'
+    d2 <- 'matched pairs'
+    d2a <- 'reduced matched pairs'
+    d3 <- 'treatment group assignments'
+    d4 <- 'covariate data with assignments'
+    if(!is.null(v$dmFile)) d1 <- downloadLink("downloadDMalt", d1)
+    if(!is.null(v$matchFile)) d2 <- downloadLink("downloadRMalt", d2)
+    if(!is.null(v$redmatFile)) d2a <- downloadLink("downloadRdMalt", d2a)
+    if(!is.null(v$grpFile)) d3 <- downloadLink("downloadAGalt", d3)
+    if(!is.null(v$finalFile)) d4 <- downloadLink("downloadFDalt", d4)
+    tags$div(
+      tags$div('Download:', d1),
+      tags$div('Download:', d2),
+      tags$div('Download:', d2a),
+      tags$div('Download:', d3),
+      tags$div('Download:', d4),
+    )
   })
 # user clicks "submit" to read covariate data -- generate distancematrix
   observeEvent(input$subCM, {
@@ -206,9 +236,30 @@ shinyServer(function(input, output, session) {
       v$covColumns <- names(dat)
       dist.info <- tryCatch(do.call(nbpMatching::gendistance, args), error = function(e) { NULL })
       if(!is.null(dist.info)) {
+        baseFileName <- sub('[.]csv$', '', basename(v$covFile))
+        # create distancematrix
         v$dm <- nbpMatching::distancematrix(dist.info$dist)
-        v$dmFile <- paste0(sub('[.]csv$', '', v$covFile), '_dm.csv')
+        # create matched pairs
+        v$matchDat <- nbpMatching::nonbimatch(v$dm)
+        # assign "treatment.grp" to each pair
+        seed <- input$pairSeed
+        if(is.na(seed) || length(seed)==0) seed <- 68
+        ag <- nbpMatching::assign.grp(v$matchDat, seed)
+        # add "treatment.grp" to covariate data
+        nr <- min(nrow(dat), nrow(ag))
+        dat[seq(nr), 'treatment.grp'] <- ag[seq(nr), 'treatment.grp']
+        # save file names
+        v$dmFile <- file.path(v$td, paste0(baseFileName, '_dm.csv'))
+        v$matchFile <- file.path(v$td, sprintf('full_%s.csv', baseFileName))
+        v$redmatFile <- file.path(v$td, sprintf('reduced_%s.csv', baseFileName))
+        v$grpFile <- file.path(v$td, sprintf('randomized_%s.csv', baseFileName))
+        v$finalFile <- file.path(v$td, sprintf('grouped_%s.csv', baseFileName))
+        # create downloadable data sets
         write.csv(v$dm, file = v$dmFile, row.names = FALSE)
+        write.csv(v$matchDat$matches, file = v$matchFile, row.names = FALSE)
+        write.csv(v$matchDat$halves, file = v$redmatFile, row.names = FALSE)
+        write.csv(ag, file = v$grpFile, row.names = FALSE)
+        write.csv(dat, file = v$finalFile, row.names = FALSE)
       }
     }
   })
@@ -234,36 +285,40 @@ shinyServer(function(input, output, session) {
     HTML(out)
   })
   output$downloadDM <- downloadHandler(
-    filename = function() {
-      basename(v$dmFile)
-    },
-    content = function(file) {
-      file.copy(v$dmFile, file)
-    }
+    filename = function() basename(v$dmFile),
+    content = function(file) file.copy(v$dmFile, file)
   )
   output$downloadRM <- downloadHandler(
-    filename = function() {
-      basename(v$matchFile)
-    },
-    content = function(file) {
-      file.copy(v$matchFile, file)
-    }
+    filename = function() basename(v$matchFile),
+    content = function(file) file.copy(v$matchFile, file)
   )
   output$downloadAG <- downloadHandler(
-    filename = function() {
-      basename(v$grpFile)
-    },
-    content = function(file) {
-      file.copy(v$grpFile, file)
-    }
+    filename = function() basename(v$grpFile),
+    content = function(file) file.copy(v$grpFile, file)
   )
   output$downloadFD <- downloadHandler(
-    filename = function() {
-      basename(v$finalFile)
-    },
-    content = function(file) {
-      file.copy(v$finalFile, file)
-    }
+    filename = function() basename(v$finalFile),
+    content = function(file) file.copy(v$finalFile, file)
+  )
+  output$downloadDMalt <- downloadHandler(
+    filename = function() basename(v$dmFile),
+    content = function(file) file.copy(v$dmFile, file)
+  )
+  output$downloadRMalt <- downloadHandler(
+    filename = function() basename(v$matchFile),
+    content = function(file) file.copy(v$matchFile, file)
+  )
+  output$downloadRdMalt <- downloadHandler(
+    filename = function() basename(v$redmatFile),
+    content = function(file) file.copy(v$redmatFile, file)
+  )
+  output$downloadAGalt <- downloadHandler(
+    filename = function() basename(v$grpFile),
+    content = function(file) file.copy(v$grpFile, file)
+  )
+  output$downloadFDalt <- downloadHandler(
+    filename = function() basename(v$finalFile),
+    content = function(file) file.copy(v$finalFile, file)
   )
 })
 
