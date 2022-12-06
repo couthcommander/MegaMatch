@@ -27,7 +27,7 @@ shinyServer(function(input, output, session) {
     if(!is.null(inFile)) {
       fp <- loadFile(inFile, v$td)
       if(file.access(fp) != -1) {
-        nrecords <- as.numeric(sub("[ ]+.*$", "", (system(paste("wc -l ", fp, sep=""), intern=TRUE))))
+        nrecords <- as.numeric(sub("[ ]*([0-9]+)[ ]+.*$", "\\1", (system(paste("wc -l ", fp, sep=""), intern=TRUE))))
         numlines <- min(nrecords, 11)
         preview <- scan(fp, sep=',', nlines=11, what='character', quiet=TRUE, na.strings=c("NA",""))
         # save path of covariate file
